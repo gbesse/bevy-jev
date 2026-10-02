@@ -1,6 +1,6 @@
 [package]
 name = "bevy-jev"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.95"
 description = "A non-blocking, provenance-checked Jev decision plugin for Bevy"

@@ -28,9 +28,14 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
 cargo run --example minimal
+cargo run --example rejected_outcome
 ```
 
 This repository is tested against Bevy 0.19.1. It does not call the live Jev API in tests.
+
+## See an invented outcome fail closed
+
+`cargo run --example rejected_outcome` uses a synthetic provider that returns `delete-save` while the NPC only allows `approach` or `wait`. The ECS records a rejected decision and performs no game action. The example needs no gateway or TypeSafe key; it does not exercise a rendered Bevy game.
 
 ## Status
 
