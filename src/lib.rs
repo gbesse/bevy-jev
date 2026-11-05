@@ -98,10 +98,40 @@ struct WorkResult {
 }
 
 /// Requests waiting to be sent to the worker.
-#[derive(Resource, Default)]
-pub struct JevRequestQueue(VecDeque<(Entity, JevRequest)>);
+#[derive(Resource)]
+pub struct JevRequestQueue {
+    pending: VecDeque<(Entity, JevRequest)>,
+    capacity: usize,
+}
+impl Default for JevRequestQueue {
+    fn default() -> Self {
+        Self {
+            pending: VecDeque::new(),
+            capacity: 1024,
+        }
+    }
+}
 
 impl JevRequestQueue {
+    /// Creates a queue with a bounded number of waiting requests.
+    ///
+    /// # Errors
+    /// Returns an error for zero capacity or capacities above 100000.
+    pub fn with_capacity(capacity: usize) -> Result<Self, &'static str> {
+        if capacity == 0 || capacity > 100_000 {
+            return Err("Capacite invalide / Invalid capacity / Capacidad invalida");
+        }
+        Ok(Self {
+            pending: VecDeque::new(),
+            capacity,
+        })
+    }
+    /// Configured capacity of the waiting queue.
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
     /// Queues a request for the given entity.
     ///
     /// # Errors
@@ -117,24 +147,27 @@ impl JevRequestQueue {
         if request.allowed_outcomes.len() < 2 {
             return Err("at least two finite outcomes are required");
         }
-        self.0.push_back((entity, request));
+        if self.pending.len() >= self.capacity {
+            return Err("File pleine / Queue full / Cola llena");
+        }
+        self.pending.push_back((entity, request));
         Ok(())
     }
 
     #[must_use]
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.pending.len()
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.pending.is_empty()
     }
 }
 
 #[derive(Resource)]
 struct JevWorker {
-    send: mpsc::Sender<WorkItem>,
+    send: mpsc::SyncSender<WorkItem>,
     receive: Arc<Mutex<mpsc::Receiver<WorkResult>>>,
 }
 
@@ -154,7 +187,7 @@ impl JevPlugin {
 
 impl Plugin for JevPlugin {
     fn build(&self, app: &mut App) {
-        let (work_tx, work_rx) = mpsc::channel::<WorkItem>();
+        let (work_tx, work_rx) = mpsc::sync_channel::<WorkItem>(1024);
         let (result_tx, result_rx) = mpsc::channel::<WorkResult>();
         let provider = Arc::clone(&self.provider);
         std::thread::Builder::new()
@@ -191,17 +224,26 @@ fn dispatch_requests(
     mut queue: ResMut<JevRequestQueue>,
     worker: Res<JevWorker>,
 ) {
-    while let Some((entity, request)) = queue.0.pop_front() {
+    while let Some((entity, request)) = queue.pending.pop_front() {
         if let Ok(mut target) = commands.get_entity(entity) {
-            target.insert(JevDecisionPending {
+            let pending = JevDecisionPending {
                 request_id: request.request_id.clone(),
                 revision: request.revision.clone(),
-            });
-            if worker.send.send(WorkItem { entity, request }).is_err() {
-                target.insert(JevDecisionOutcome::Rejected {
-                    reason: "Jev worker stopped".into(),
-                });
-                target.remove::<JevDecisionPending>();
+            };
+            match worker.send.try_send(WorkItem { entity, request }) {
+                Ok(()) => {
+                    target.insert(pending);
+                }
+                Err(mpsc::TrySendError::Full(work)) => {
+                    queue.pending.push_front((work.entity, work.request));
+                    break;
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    target.insert(JevDecisionOutcome::Rejected {
+                        reason: "Worker arrete / Worker stopped / Worker detenido".into(),
+                    });
+                    target.remove::<JevDecisionPending>();
+                }
             }
         }
     }
@@ -398,5 +440,26 @@ mod tests {
             std::thread::yield_now();
         }
         assert!(app.world().get::<JevDecisionOutcome>(entity).is_none());
+    }
+}
+
+#[cfg(test)]
+mod capacity_tests {
+    use super::*;
+    #[test]
+    fn bounded_admission_preserves_existing_work() {
+        let mut queue = JevRequestQueue::with_capacity(1).unwrap();
+        let mut world = World::new();
+        let entity = world.spawn_empty().id();
+        let request = || JevRequest::new("r", "v", "p", serde_json::json!({}), ["a", "b"]);
+        assert!(queue.submit(entity, request()).is_ok());
+        assert!(queue.submit(entity, request()).is_err());
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue.capacity(), 1);
+    }
+    #[test]
+    fn capacity_bounds() {
+        assert!(JevRequestQueue::with_capacity(0).is_err());
+        assert!(JevRequestQueue::with_capacity(100_001).is_err());
     }
 }

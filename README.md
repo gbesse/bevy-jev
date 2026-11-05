@@ -42,3 +42,12 @@ This repository is tested against Bevy 0.19.1. It does not call the live Jev API
 Early, intentionally narrow integration. The ECS scheduling, background provider, gateway transport, and provenance guards are implemented and unit-tested. A full rendered Bevy game was not launched in this development environment.
 
 MIT — see [LICENSE](LICENSE).
+
+
+## 2026-11-05 — FR / EN / ES
+
+FR : `JevRequestQueue::with_capacity(n)` borne les requêtes en attente (défaut1024) et refuse une admission sans supprimer les précédentes. Le canal worker est borné à1024 ; `try_send` remet la requête en tête si plein, sans bloquer le thread Bevy. Cette limite compte les attentes, pas une limite de taille des états JSON ni un plafond mémoire global.
+
+EN: `JevRequestQueue::with_capacity(n)` bounds waiting requests (default1024) and rejects admission without dropping prior work. Worker channel is bounded to1024; `try_send` returns full-channel work to the queue head without blocking Bevy. This bounds waiting counts, not JSON-state size or total memory.
+
+ES: `JevRequestQueue::with_capacity(n)` limita solicitudes en espera (por defecto1024) y rechaza admisión sin perder anteriores. Canal worker limitado a1024; `try_send` devuelve trabajo a cabecera si lleno sin bloquear Bevy. Limita recuentos, no tamaño de estados JSON ni memoria total.
