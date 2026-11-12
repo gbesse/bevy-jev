@@ -154,6 +154,16 @@ impl JevRequestQueue {
         Ok(())
     }
 
+    /// Cancels waiting work matching both entity and request id.
+    /// Returns the number removed. Already dispatched work is unaffected.
+    pub fn cancel_waiting(&mut self, entity: Entity, request_id: &str) -> usize {
+        let before = self.pending.len();
+        self.pending.retain(|(queued_entity, request)| {
+            *queued_entity != entity || request.request_id != request_id
+        });
+        before - self.pending.len()
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.pending.len()
@@ -461,5 +471,41 @@ mod capacity_tests {
     fn capacity_bounds() {
         assert!(JevRequestQueue::with_capacity(0).is_err());
         assert!(JevRequestQueue::with_capacity(100_001).is_err());
+    }
+}
+
+#[cfg(test)]
+mod waiting_cancellation_tests {
+    use super::*;
+    #[test]
+    fn cancellation_is_exact_and_releases_capacity() {
+        let mut queue = JevRequestQueue::with_capacity(2).unwrap();
+        let mut world = World::new();
+        let a = world.spawn_empty().id();
+        let b = world.spawn_empty().id();
+        let req = || {
+            JevRequest::new(
+                "same",
+                "revision",
+                "pack",
+                serde_json::json!({}),
+                ["a", "b"],
+            )
+        };
+        queue.submit(a, req()).unwrap();
+        queue.submit(b, req()).unwrap();
+        assert_eq!(queue.cancel_waiting(a, "different"), 0);
+        assert_eq!(queue.cancel_waiting(a, "same"), 1);
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue.pending[0].0, b);
+        queue.submit(a, req()).unwrap();
+        assert_eq!(queue.len(), 2);
+    }
+    #[test]
+    fn empty_waiting_queue_does_not_claim_active_cancellation() {
+        let mut queue = JevRequestQueue::default();
+        let mut world = World::new();
+        let entity = world.spawn_empty().id();
+        assert_eq!(queue.cancel_waiting(entity, "r"), 0);
     }
 }

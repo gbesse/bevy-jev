@@ -51,3 +51,12 @@ FR : `JevRequestQueue::with_capacity(n)` borne les requêtes en attente (défaut
 EN: `JevRequestQueue::with_capacity(n)` bounds waiting requests (default1024) and rejects admission without dropping prior work. Worker channel is bounded to1024; `try_send` returns full-channel work to the queue head without blocking Bevy. This bounds waiting counts, not JSON-state size or total memory.
 
 ES: `JevRequestQueue::with_capacity(n)` limita solicitudes en espera (por defecto1024) y rechaza admisión sin perder anteriores. Canal worker limitado a1024; `try_send` devuelve trabajo a cabecera si lleno sin bloquear Bevy. Limita recuentos, no tamaño de estados JSON ni memoria total.
+
+
+## 2026-11-12 — FR / EN / ES
+
+FR : Annuler exactement les requêtes encore en attente par entité et identifiant sans prétendre annuler le travail déjà envoyé.
+
+EN: Cancel waiting requests by exact entity and request ID without claiming cancellation of dispatched work.
+
+ES: Cancelar solicitudes pendientes por entidad e ID exactos sin afirmar cancelación de trabajo enviado.
